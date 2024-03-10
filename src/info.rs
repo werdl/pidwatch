@@ -1,83 +1,84 @@
 use std::{path::Path, time::SystemTime};
 
-use sysinfo;
+use sysinfo::{self, Networks};
 
 
+#[derive(Debug, Clone)]
 pub struct ProcessData {
-    pid: u32,
-    name: String,
-    exe: String,
-    state: String,
+    pub pid: u32,
+    pub name: String,
+    pub exe: String,
+    pub state: String,
 
-    ram: u64,
-    virtual_memory: u64,
-    total_time: f32,
-    start_time: f32,
-    cpu_usage: f32,
+    pub ram: u64,
+    pub virtual_memory: u64,
+    pub total_time: f32,
+    pub start_time: f32,
+    pub cpu_usage: f32,
 }
 
+#[derive(Debug, Clone)]
 pub struct User {
-    name: String,
-    uid: f32,
-    gid: f32,
-    groups: Vec<String>,
+    pub name: String,
+    pub uid: String,
+    pub groups: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
 pub struct SystemSpec {
-    os: String,
-    hostname: String,
-    kernel: String,
-    uptime: String,
-    users: Vec<User>,
+    pub os: String,
+    pub hostname: String,
+    pub kernel: String,
+    pub uptime: String,
+    pub users: Vec<User>,
 }
 
-pub struct Disk {
-    name: String,
-    mount: String,
-    total: u64,
-    used: u64,
-    free: u64,
-    percent: f32,
-    fs_type: String,
-    is_removable: bool,
+#[derive(Debug, Clone)]
+pub struct  Disk {
+    pub name: String,
+    pub mount: String,
+    pub total: u64,
+    pub used: u64,
+    pub free: u64,
+    pub percent: f32,
+    pub fs_type: String,
+    pub is_removable: bool,
 }
 
+#[derive(Debug, Clone)]
 pub struct Cpu {
-    name: String,
-    usage: f32,
-    clock_speed: f32,
-    vendor: String,
+    pub name: String,
+    pub usage: f32,
+    pub clock_speed: f32,
+    pub vendor: String,
 }
 
-pub struct Network {
-    name: String,
-    address: String,
-    netmask: String,
-    broadcast: String,
-    ptp: String,
-    mac: String,
-    is_up: bool,
-    is_running: bool,
-    is_loopback: bool,
-    mtu: u32,
-    rx: u64,
-    tx: u64,
+#[derive(Debug, Clone)]
+pub struct  Network {
+    pub name: String,
+    pub mac: String,
+    pub total_sent: u64,
+    pub total_recv: u64,
+    pub total_packets_sent: u64,
+    pub total_packets_recv: u64,
 }
 
+#[derive(Debug, Clone)]
 pub struct SystemData {
-    cpus: Vec<Cpu>,
-    memory: u64,
-    swap: u64,
-    disks: Vec<Disk>,
-    total_memory: u64,
-    total_swap: u64,
-    networks: Vec<Network>,
+    pub cpus: Vec<Cpu>,
+    pub memory: u64,
+    pub swap: u64,
+    pub disks: Vec<Disk>,
+    pub total_memory: u64,
+    pub total_swap: u64,
+    pub networks: Vec<Network>,
 }
 
+#[derive(Debug, Clone)]
 pub struct SystemInfo {
-    usage: SystemData,
-    processes: Vec<ProcessData>,
-    spec: SystemSpec,
+    pub usage: SystemData,
+    pub processes: Vec<ProcessData>,
+    pub spec: SystemSpec,
 }
 
 impl SystemInfo {
@@ -106,6 +107,8 @@ impl SystemInfo {
     pub fn populate(&mut self) {
         let mut sys = sysinfo::System::new_all();
 
+        std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+
         sys.refresh_all();
 
         std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
@@ -127,7 +130,22 @@ impl SystemInfo {
         self.usage.swap = sys.used_swap();
         self.usage.total_memory = sys.total_memory();
         self.usage.total_swap = sys.total_swap();
-        
+
+        let mut networks = vec![];
+
+        for (name, network) in Networks::new_with_refreshed_list().iter() {
+            networks.push(Network {
+                name: name.to_string(),
+                mac: network.mac_address().to_string(),
+                total_sent: network.total_transmitted(),
+                total_recv: network.total_received(),
+                total_packets_sent: network.total_packets_transmitted(),
+                total_packets_recv: network.total_packets_received(),
+            });
+        }
+
+        self.usage.networks = networks;
+
         let mut disks = vec![];
 
         for disk in &sysinfo::Disks::new_with_refreshed_list() {
@@ -169,19 +187,18 @@ impl SystemInfo {
 
         self.processes = processes;
 
-        self.spec.os = sysinfo::System::os_version().unwrap_or_default().to_string();
+        self.spec.os = format!("{} {}", sysinfo::System::name().unwrap_or("Unknown".to_string()), sysinfo::System::os_version().unwrap_or_default());
         self.spec.hostname = sysinfo::System::host_name().unwrap_or_default().to_string();
         self.spec.kernel = sysinfo::System::kernel_version().unwrap_or_default().to_string();
         self.spec.uptime = sysinfo::System::uptime().to_string();
 
         let mut users = vec![];
 
-        for user in sysinfo::get_users() {
+        for user in sysinfo::Users::new_with_refreshed_list().list() {
             users.push(User {
                 name: user.name().to_string(),
-                uid: user.uid() as f32,
-                gid: user.gid() as f32,
-                groups: user.groups().iter().map(|x| x.to_string()).collect(),
+                uid: user.id().to_string(),
+                groups: user.groups().iter().map(|x| x.name().to_string()).collect(),
             });
         }
 
